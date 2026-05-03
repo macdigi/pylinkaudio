@@ -1,10 +1,10 @@
 """Python bindings for Ableton Link 4.0 with Link Audio support."""
 
-from pylinkaudio._core import Link
+from pylinkaudio._core import Link, SessionState
 
 try:
     from pylinkaudio._version import version as __version__
 except ImportError:
     __version__ = "0.0.0+unknown"
 
-__all__ = ["Link", "__version__"]
+__all__ = ["Link", "SessionState", "__version__"]
