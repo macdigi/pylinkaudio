@@ -12,7 +12,13 @@
 // lands with v0.2's asyncio_ext.
 
 #include <pybind11/pybind11.h>
-#include <ableton/Link.hpp>
+// IMPORTANT: include LinkAudio.hpp (not Link.hpp) so all TUs in this extension
+// see the same definition of link::ApiController. Link.hpp's ApiConfig sets
+// the controller alias to the basic Controller; LinkAudio.hpp's ApiConfig
+// sets it to the audio SessionController. Mixing the two across TUs is an
+// ODR violation that manifests as a "mutex lock failed" crash on shutdown
+// because BasicLink<Clock> has different member layouts in each TU.
+#include <ableton/LinkAudio.hpp>
 
 #include <chrono>
 #include <cstdint>

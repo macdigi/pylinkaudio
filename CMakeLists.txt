@@ -44,6 +44,7 @@ find_package(pybind11 CONFIG REQUIRED)
 pybind11_add_module(_core
     src/_core/module.cpp
     src/_core/link_core.cpp
+    src/_core/link_audio.cpp
 )
 
 # Link's CMake exposes Ableton::Link as an INTERFACE target carrying
