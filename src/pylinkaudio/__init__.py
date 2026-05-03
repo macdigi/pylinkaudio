@@ -7,6 +7,7 @@ from pylinkaudio._core import (
     NodeId,
     Channel,
     AudioSource,
+    AudioSink,
 )
 
 try:
@@ -21,5 +22,6 @@ __all__ = [
     "NodeId",
     "Channel",
     "AudioSource",
+    "AudioSink",
     "__version__",
 ]

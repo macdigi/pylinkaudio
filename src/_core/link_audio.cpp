@@ -59,6 +59,96 @@ struct Slot
 
 using SlotQueue = ableton::link_audio::Queue<Slot>;
 
+// AudioSink wrapper — announces a channel and provides a Python-friendly
+// write() that captures session state, builds a BufferHandle, copies samples,
+// and commits in one step.
+//
+// Inputs are numpy int16 frames in either 1D shape (frames,) for mono or
+// 2D shape (frames, channels) where channels is 1 or 2. Float-to-int16
+// conversion is left to the caller (`(x * 32767).clip(...).astype(np.int16)`)
+// to keep the binding allocation-free in the hot path.
+class AudioSink
+{
+public:
+    AudioSink(LinkAudio& link, std::string name, std::size_t maxSamples)
+      : mpLink(&link)
+      , mSink(link, std::move(name), maxSamples)
+    {
+    }
+
+    bool write(const py::array_t<std::int16_t,
+                py::array::c_style | py::array::forcecast>& frames,
+               std::uint32_t sampleRate,
+               double quantum)
+    {
+        const auto info = frames.request();
+        std::size_t numFrames = 0;
+        std::size_t numChannels = 0;
+
+        if (info.ndim == 1) {
+            numFrames = static_cast<std::size_t>(info.shape[0]);
+            numChannels = 1;
+        } else if (info.ndim == 2) {
+            numFrames = static_cast<std::size_t>(info.shape[0]);
+            numChannels = static_cast<std::size_t>(info.shape[1]);
+        } else {
+            throw py::value_error(
+                "frames must be 1D (mono) or 2D (frames, channels)");
+        }
+
+        if (numChannels != 1 && numChannels != 2) {
+            throw py::value_error(
+                "Link Audio supports only 1 or 2 channels");
+        }
+        if (numFrames == 0) {
+            return false;
+        }
+
+        const auto totalSamples = numFrames * numChannels;
+        if (totalSamples > mSink.maxNumSamples()) {
+            throw py::value_error(
+                "frames * channels exceeds the sink's max_num_samples; "
+                "increase max_samples in the AudioSink constructor or call "
+                ".request_max_num_samples()");
+        }
+
+        // Capture the session state and timestamp on the calling thread —
+        // app-session is thread-safe but not RT-safe. Users on a hard
+        // real-time thread should batch via the to-be-added audio-thread
+        // overload (v0.2).
+        auto state = mpLink->captureAppSessionState();
+        const auto hostTimeUs = mpLink->clock().micros();
+
+        ableton::LinkAudioSink::BufferHandle handle(mSink);
+        if (!handle) {
+            return false;  // no remote source listening or pool exhausted
+        }
+
+        std::memcpy(
+            handle.samples,
+            info.ptr,
+            totalSamples * sizeof(std::int16_t));
+
+        const auto beatsAtBufferBegin = state.beatAtTime(hostTimeUs, quantum);
+        return handle.commit(
+            state,
+            beatsAtBufferBegin,
+            quantum,
+            numFrames,
+            numChannels,
+            sampleRate);
+    }
+
+    std::string name() const { return mSink.name(); }
+    void setName(std::string name) { mSink.setName(std::move(name)); }
+    std::size_t maxNumSamples() const { return mSink.maxNumSamples(); }
+    void requestMaxNumSamples(std::size_t n) { mSink.requestMaxNumSamples(n); }
+
+private:
+    LinkAudio* mpLink;  // lifetime guarded by py::keep_alive<1, 2>
+    ableton::LinkAudioSink mSink;
+};
+
 // AudioSource — owns a LinkAudioSource and a slot queue. The callback runs
 // on a Link-managed thread; it copies the buffer into a queue slot and
 // releases. Python reads from the queue on its own thread.
@@ -301,6 +391,41 @@ void bind_link_audio(py::module_& m)
         .def("channels",
             [](const LinkAudio& self) { return self.channels(); },
             "List of currently available audio channels in the session.")
+        ;
+
+    // ---- AudioSink ----
+    py::class_<AudioSink>(m, "AudioSink",
+        "Announces an audio channel to the Link session. Other peers with a "
+        "matching AudioSource will receive the audio buffers committed via "
+        "write(). The sink lifetime is what determines channel visibility — "
+        "as long as the AudioSink is alive, the channel is announced.")
+        .def(py::init<LinkAudio&, std::string, std::size_t>(),
+             py::arg("link"),
+             py::arg("name"),
+             py::arg("max_samples") = 4096,
+             py::keep_alive<1, 2>(),
+             "Construct a sink for the given channel name. max_samples is "
+             "the largest single buffer (frames * channels) ever passed to "
+             "write(); 4096 covers stereo 2048-frame blocks.")
+
+        .def("write", &AudioSink::write,
+             py::arg("frames"),
+             py::arg("sample_rate"),
+             py::arg("quantum") = 4.0,
+             "Send a buffer of int16 audio. `frames` is a numpy int16 array "
+             "shape (num_frames,) for mono or (num_frames, channels) for "
+             "stereo. Returns True if a buffer was committed, False if no "
+             "remote source is listening or no internal buffer was available.")
+
+        .def_property("name", &AudioSink::name, &AudioSink::setName,
+             "Display name of the channel. Truncated to 256 chars.")
+
+        .def("max_num_samples", &AudioSink::maxNumSamples,
+             "Current maximum buffer capacity in samples (frames * channels).")
+
+        .def("request_max_num_samples", &AudioSink::requestMaxNumSamples,
+             py::arg("num_samples"),
+             "Request a larger buffer-handle capacity. No-op if already big enough.")
         ;
 
     // ---- AudioSource ----

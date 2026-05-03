@@ -29,6 +29,8 @@ def main() -> int:
                         help="Seconds to wait for channel discovery (default: 2)")
     parser.add_argument("--channel", type=int, default=None,
                         help="Channel index to auto-pick. If omitted, prompts.")
+    parser.add_argument("--channel-name", default=None,
+                        help="Auto-pick channel by name match (overrides --channel).")
     parser.add_argument("--duration", type=float, default=5.0,
                         help="Seconds to receive (default: 5)")
     args = parser.parse_args()
@@ -52,7 +54,13 @@ def main() -> int:
     for i, ch in enumerate(channels):
         print(f"  [{i}] {ch.peer_name} | {ch.name}")
 
-    if args.channel is not None:
+    if args.channel_name is not None:
+        matches = [i for i, c in enumerate(channels) if c.name == args.channel_name]
+        if not matches:
+            print(f"No channel named {args.channel_name!r} found")
+            return 1
+        idx = matches[0]
+    elif args.channel is not None:
         if args.channel >= len(channels):
             print(f"--channel {args.channel} out of range")
             return 1
