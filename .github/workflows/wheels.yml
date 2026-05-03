@@ -36,6 +36,10 @@ jobs:
           # Cap parallelism; FetchContent + pybind11 + Link templates are
           # memory-hungry, especially in the manylinux2014 containers.
           CIBW_ENVIRONMENT: "CMAKE_BUILD_PARALLEL_LEVEL=2"
+          # manylinux2014 (CentOS 7-based) doesn't include libatomic in the
+          # base image. Link's CMake links against atomic on Linux for
+          # 8-byte atomic ops, so install it before each Linux build.
+          CIBW_BEFORE_BUILD_LINUX: "yum install -y libatomic"
 
       - uses: actions/upload-artifact@v4
         with:
