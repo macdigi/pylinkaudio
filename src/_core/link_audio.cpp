@@ -112,11 +112,26 @@ public:
                 ".request_max_num_samples()");
         }
 
-        // Capture the session state and timestamp on the calling thread —
-        // app-session is thread-safe but not RT-safe. Users on a hard
-        // real-time thread should batch via the to-be-added audio-thread
-        // overload (v0.2).
-        auto state = mpLink->captureAppSessionState();
+        // Snapshot the raw pointer + size before releasing the GIL — the
+        // py::array_t reference held by the caller keeps the buffer alive
+        // for the duration of this call, so the pointer is valid without
+        // the GIL.
+        const auto* srcPtr = static_cast<const std::int16_t*>(info.ptr);
+        const auto srcBytes = totalSamples * sizeof(std::int16_t);
+
+        // Release the GIL for the rest. Without this, write() blocks any
+        // other Python thread (notably an audio callback that's calling
+        // push() into our send queue) for the duration of the network
+        // commit. On Pi 3B with a contended GIL this caps throughput at
+        // ~17 calls/sec; releasing it raises the ceiling dramatically.
+        py::gil_scoped_release release;
+
+        // Use the AUDIO-thread session capture — lock-free and RT-safe.
+        // Caller must guarantee write() is invoked from at most one thread
+        // at a time (which is the natural design for a single AudioSink).
+        // The previous app-session capture took a mutex per call, which on
+        // Pi 3B + multiple peers serialised every send — the dominant cost.
+        auto state = mpLink->captureAudioSessionState();
         const auto hostTimeUs = mpLink->clock().micros();
 
         ableton::LinkAudioSink::BufferHandle handle(mSink);
@@ -124,10 +139,7 @@ public:
             return false;  // no remote source listening or pool exhausted
         }
 
-        std::memcpy(
-            handle.samples,
-            info.ptr,
-            totalSamples * sizeof(std::int16_t));
+        std::memcpy(handle.samples, srcPtr, srcBytes);
 
         const auto beatsAtBufferBegin = state.beatAtTime(hostTimeUs, quantum);
         return handle.commit(
@@ -415,7 +427,12 @@ void bind_link_audio(py::module_& m)
              "Send a buffer of int16 audio. `frames` is a numpy int16 array "
              "shape (num_frames,) for mono or (num_frames, channels) for "
              "stereo. Returns True if a buffer was committed, False if no "
-             "remote source is listening or no internal buffer was available.")
+             "remote source is listening or no internal buffer was available.\n\n"
+             "THREADING: write() must be called from at most one thread at a "
+             "time per AudioSink instance. Internally uses the lock-free "
+             "audio-thread session capture and releases the GIL during the "
+             "network commit. Calling concurrently from multiple threads on "
+             "the same sink is undefined behaviour.")
 
         .def_property("name", &AudioSink::name, &AudioSink::setName,
              "Display name of the channel. Truncated to 256 chars.")
