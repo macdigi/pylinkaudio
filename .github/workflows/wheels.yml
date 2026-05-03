@@ -37,9 +37,18 @@ jobs:
           # memory-hungry, especially in the manylinux2014 containers.
           CIBW_ENVIRONMENT: "CMAKE_BUILD_PARALLEL_LEVEL=2"
           # manylinux2014 (CentOS 7-based) doesn't include libatomic in the
-          # base image. Link's CMake links against atomic on Linux for
-          # 8-byte atomic ops, so install it before each Linux build.
-          CIBW_BEFORE_BUILD_LINUX: "yum install -y libatomic"
+          # base image. `yum install libatomic` lays down libatomic.so.1
+          # (the runtime), but the unversioned libatomic.so symlink that
+          # the linker's -latomic resolves against ships in libatomic-devel.
+          # Install both, and as a belt-and-braces fallback create the
+          # symlink ourselves in case the -devel package vanishes upstream.
+          CIBW_BEFORE_ALL_LINUX: >
+            yum install -y libatomic libatomic_static libatomic-devel || yum install -y libatomic;
+            for d in /usr/lib64 /usr/lib /lib64 /lib; do
+              if [ -e "$d/libatomic.so.1" ] && [ ! -e "$d/libatomic.so" ]; then
+                ln -s libatomic.so.1 "$d/libatomic.so";
+              fi;
+            done
 
       - uses: actions/upload-artifact@v4
         with:
