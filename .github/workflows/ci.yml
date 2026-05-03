@@ -21,6 +21,12 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # setuptools_scm needs full history (or at least the most recent
+          # tag) to compute a stable version. Shallow clones cause it to
+          # emit two different version strings at different build stages
+          # ("Metadata mismatch in METADATA").
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:

@@ -19,6 +19,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # setuptools_scm needs full history
 
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.21
@@ -45,6 +47,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # setuptools_scm needs full history
 
       - uses: actions/setup-python@v5
         with:
