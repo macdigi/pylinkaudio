@@ -28,15 +28,39 @@ link.enabled = True
 print("peers:", link.num_peers())
 ```
 
-### Link Audio (coming day 4 of v0.1)
+### Link Audio — receive
 
 ```python
-from pylinkaudio import Link, AudioReceiver
+import time
+from pylinkaudio import LinkAudio, AudioSource
 
-link = Link(120.0); link.enabled = True
-recv = AudioReceiver(link, channels=2, sample_rate=48000)
-recv.start()
-frames = recv.read(num_frames=1024, timeout=0.1)  # numpy [channels, frames] float32
+link = LinkAudio(bpm=120.0, name="my-app")
+link.enabled = True
+link.link_audio_enabled = True
+time.sleep(2)  # let channel discovery settle
+
+channels = link.channels()
+for ch in channels:
+    print(ch.peer_name, "|", ch.name)
+
+src = AudioSource(link, channels[0].id)
+frames, info = src.read(timeout=0.5)   # numpy int16, shape (frames, channels)
+```
+
+### Link Audio — send
+
+```python
+import numpy as np
+from pylinkaudio import LinkAudio, AudioSink
+
+link = LinkAudio(120.0, "my-app")
+link.enabled = True
+link.link_audio_enabled = True
+
+sink = AudioSink(link, "my-channel", max_samples=4096)
+# Mono: shape (frames,)  Stereo: shape (frames, 2). int16 only — convert
+# float audio with `(x * 32767).clip(-32768, 32767).astype(np.int16)`.
+ok = sink.write(np.zeros(512, dtype=np.int16), sample_rate=48000)
 ```
 
 ## Caveats
