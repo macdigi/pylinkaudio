@@ -11,8 +11,10 @@ from pylinkaudio._core import (
 )
 
 try:
-    from pylinkaudio._version import version as __version__
-except ImportError:
+    from importlib.metadata import version as _v
+    __version__ = _v("pylinkaudio")
+    del _v
+except Exception:
     __version__ = "0.0.0+unknown"
 
 __all__ = [
