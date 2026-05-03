@@ -1,5 +1,9 @@
 # pylinkaudio
 
+[![CI](https://github.com/macdigi/pylinkaudio/actions/workflows/ci.yml/badge.svg)](https://github.com/macdigi/pylinkaudio/actions/workflows/ci.yml)
+[![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![Python: 3.11–3.13](https://img.shields.io/badge/python-3.11--3.13-blue.svg)](https://github.com/macdigi/pylinkaudio)
+
 Python bindings for [Ableton Link](https://github.com/Ableton/link) 4.0 with **Link Audio** support — multi-channel audio streaming between Link peers over LAN.
 
 > Status: pre-alpha. v0.1 targets Link 4.0 (ships with Live 12.4, May 5 2026).
