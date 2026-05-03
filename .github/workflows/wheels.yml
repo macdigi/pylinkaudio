@@ -1,0 +1,61 @@
+name: Build wheels
+
+# Trigger on tag push (v*) or manual dispatch. Tagged builds also fire CI
+# (which runs editable installs + tests); this workflow produces the actual
+# distributable wheels and an sdist as artifacts.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build_wheels:
+    name: ${{ matrix.os }} wheels
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04, ubuntu-24.04-arm]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.21
+        env:
+          # cp311 is mandatory — Pi OS Bookworm ships Python 3.11.
+          CIBW_BUILD: "cp311-* cp312-* cp313-*"
+          # No Alpine (musllinux) — we don't target those for v0.1.
+          CIBW_SKIP: "*-musllinux_*"
+          # Skip the pre-test inside cibuildwheel; the CI workflow runs full
+          # tests separately.
+          CIBW_TEST_SKIP: "*"
+          CIBW_BUILD_VERBOSITY: "1"
+          # Cap parallelism; FetchContent + pybind11 + Link templates are
+          # memory-hungry, especially in the manylinux2014 containers.
+          CIBW_ENVIRONMENT: "CMAKE_BUILD_PARALLEL_LEVEL=2"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: ./wheelhouse/*.whl
+
+  build_sdist:
+    name: sdist
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: ./dist/*.tar.gz
